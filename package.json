@@ -10,8 +10,14 @@
     "test": "jest"
   },
   "dependencies": {
+    "buffer": "^6.0.3",
+    "nodejs-mobile-react-native": "^18.20.4",
+    "qrcode": "^1.5.4",
     "react": "18.3.1",
-    "react-native": "0.77.0"
+    "react-native": "0.77.0",
+    "react-native-bluetooth-classic": "^1.73.0-rc.13",
+    "react-native-bluetooth-escpos-printer": "github:FlorentZani/react-native-bluetooth-escpos-printer",
+    "react-native-tcp-socket": "^6.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -25,15 +31,18 @@
     "@react-native/metro-config": "0.77.0",
     "@react-native/typescript-config": "0.77.0",
     "@types/jest": "^29.5.13",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^18.2.6",
     "@types/react-test-renderer": "^18.0.0",
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
+    "patch-package": "^8.0.0",
     "prettier": "2.8.8",
     "react-test-renderer": "18.3.1",
     "typescript": "5.0.4"
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

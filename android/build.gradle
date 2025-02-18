@@ -1,3 +1,5 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
 buildscript {
     ext {
         buildToolsVersion = "35.0.0"
@@ -12,10 +14,36 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle")
-        classpath("com.facebook.react:react-native-gradle-plugin")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        classpath("com.android.tools.build:gradle:8.1.3") // Ensure compatible AGP version
+        classpath("com.facebook.react:react-native-gradle-plugin:0.73.1") // Adjust for your React Native version
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21") // Ensure it matches ext.kotlinVersion
     }
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+
+        // Ensure no insecure HTTP repositories
+        // Remove any `http://` repositories that may be causing errors
+    }
+}
+
+subprojects {
+    buildscript {
+        repositories {
+            google()
+            mavenCentral()
+        }
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// Ensure Gradle Wrapper is compatible in gradle/wrapper/gradle-wrapper.properties
+// distributionUrl=https\://services.gradle.org/distributions/gradle-8.3-all.zip
