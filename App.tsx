@@ -8,12 +8,15 @@ import {
   StyleSheet,
   PermissionsAndroid,
   Platform,
+  ScrollView,
+  Linking,
 } from 'react-native';
 import TcpSocket from 'react-native-tcp-socket';
 import RNBluetoothClassic, { BluetoothDevice as RNBluetoothDevice } from 'react-native-bluetooth-classic';
-import { addBreaks, centerText, dottedLine, printQRCode, textWithHeadingSize, boldText } from './escpos-commands';
-import { formatInvoice, Invoice } from './InvoiceFormatter'; // invoiceFormatter.ts should export an Invoice interface and formatInvoice
+import { addBreaks, centerText, dottedLine, printQRCode, boldText } from './escpos-commands';
+import { formatInvoice, Invoice } from './InvoiceFormatter';
 import { Buffer } from 'buffer';
+import { NetworkInfo } from 'react-native-network-info';
 
 global.Buffer = Buffer;
 
@@ -24,6 +27,8 @@ interface BluetoothDevice {
 }
 
 const App: React.FC = () => {
+  // Allow ipAddress to be null in case no IP is found.
+  const [ipAddress, setIpAddress] = useState<string | null>('');
   const [devices, setDevices] = useState<BluetoothDevice[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<BluetoothDevice | null>(null);
   const connectedDeviceRef = useRef<BluetoothDevice | null>(null);
@@ -73,59 +78,113 @@ const App: React.FC = () => {
     }
   };
 
-  // Print a test message using a fixed command sequence
-  const printTestMessage = async (): Promise<void> => {
-    if (!connectedDeviceRef.current) {
-      console.warn('No Bluetooth device connected');
-      return;
-    }
-    // For testing, we'll print a centered, bold header with a dotted line and a QR code.
-    const commands =
-      centerText() +
-      addBreaks(1) +
-      dottedLine(48) +
-      addBreaks(1) +
-      printQRCode("https://example.com", 7) +
-      addBreaks(2);
-    try {
-      await RNBluetoothClassic.writeToDevice(
-        connectedDeviceRef.current.address,
-        Buffer.from("Test ë Ä Ö Ü é ü", "latin1")
-      );
-      console.log('Printed test message');
-    } catch (e) {
-      console.error('Printing failed:', e);
-    }
-  };
-
-  /**
-   * Print invoice received from an HTTP POST request.
-   * The invoice JSON object may have all properties optional.
-   */
+  // Print invoice received (used by the TCP server)
   const printInvoice = async (invoice: Invoice): Promise<void> => {
     if (!connectedDeviceRef.current) {
       console.warn('No Bluetooth device connected');
       return;
     }
     try {
-      // formatInvoice builds the ESC/POS command string from the invoice JSON.
+      // Generate the ESC/POS commands from the invoice
       let commands = formatInvoice(invoice);
-    
-      // Convert the string to a Buffer with UTF-8 encoding
-      let encodedCommands = Buffer.from(commands, 'latin1');
-    
+      // Prepend the printer configuration with the device's private IP (or a fallback)
+      const printerConfig = "Konfiguruesi i printerit : " + (ipAddress || 'Nuk u gjet') + "\n";
+      const fullCommands = printerConfig + commands;
+
+      const encodedCommands = Buffer.from(fullCommands, 'latin1');
+
       console.log('Printing invoice with commands (first 100 chars):', encodedCommands.slice(0, 100));
-    
+
       await RNBluetoothClassic.writeToDevice(
         connectedDeviceRef.current.address,
         encodedCommands
       );
-    
+
       console.log('Printed invoice successfully');
     } catch (error) {
       console.error('Printing invoice failed:', error);
     }
   };
+
+  // Print a test invoice using sample data (similar to your provided JSON)
+  const printTestMessage = async (): Promise<void> => {
+    if (!connectedDeviceRef.current) {
+      console.warn('No Bluetooth device connected');
+      return;
+    }
+    const sampleInvoice: Invoice = {
+      invoiceType: "Fature Shitje",
+      header: "Invoice Header",
+      invNumber: 15,
+      tin: "123456789",
+      address: "123 Main Street",
+      fiscString: "Fiscal Info",
+      opCode: "OP01",
+      buCode: "BU01",
+      Date: "2023-09-25",
+      lines: [
+        {
+          productName: "qumesht",
+          quantity: 0,
+          price: 0,
+          fullPrice: 0,
+          discountAmount: 0,
+          uom: "Cope"
+        },
+        {
+          productName: "qumesht",
+          quantity: 0,
+          price: 0,
+          fullPrice: 0,
+          discountAmount: 0,
+          uom: "Cope"
+        }
+      ],
+      totalPriceNoVat: 0,
+      vat: [
+        {
+          vatType: "Standard",
+          amount: 0
+        }
+      ],
+      totalDiscount: 0,
+      totalPrice: 0,
+      Exrate: 0,
+      CustomerName: "John Doe",
+      CustomerTin: "987654321",
+      CustomerContact: "555-1234",
+      CustomerAddress: "456 Other St",
+      qrCode: "https://example.com/invoice/123",
+      qrSize: 8,
+      IIC: "IICDATA",
+      FIC: "FICDATA",
+      Footer: "Thank you for your purchase!"
+    };
+
+    // Use the same process as printInvoice
+    printInvoice(sampleInvoice);
+  };
+
+  // Handler for the "configure printer" button
+  const handleConfigurePrinter = () => {
+    console.log("Kliko ketu per te shtuar konfigurimin e printerit");
+    // Add your printer configuration logic here
+  };
+
+  // Handler for the button that opens a web page
+  const handleGoToPage = () => {
+    Linking.openURL('https://www.example.com').catch(err =>
+      console.error("Failed to open page:", err)
+    );
+  };
+
+  // Get the device's private IP address
+  useEffect(() => {
+    NetworkInfo.getIPAddress().then(ip => {
+      setIpAddress(ip || 'Nuk u gjet');
+      console.log('Device IP address:', ip);
+    });
+  }, []);
 
   // Set up the TCP server to listen for HTTP POST requests (runs once on mount)
   useEffect(() => {
@@ -196,38 +255,139 @@ const App: React.FC = () => {
   }, []); // Run once on mount
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Mobile HTTP Server with Bluetooth Printing</Text>
-      <FlatList
-        data={devices}
-        keyExtractor={(item) => item.address}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => connectToDevice(item)}
-            style={{ marginVertical: 10 }}
-          >
-            <Text>{item.name} - {item.address}</Text>
-          </TouchableOpacity>
-        )}
-      />
-      {connectedDeviceRef.current && (
-        <View style={{ marginTop: 20 }}>
-          <Text>Connected to {connectedDeviceRef.current.name}</Text>
-          <Button title="Print Test" onPress={printTestMessage} />
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.title}>BLUETOOTH PRINTER</Text>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Paired Bluetooth Devices</Text>
+        <FlatList
+          data={devices}
+          keyExtractor={(item) => item.address}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              onPress={() => connectToDevice(item)}
+              style={styles.deviceItem}
+            >
+              <Text style={styles.deviceText}>{item.name}</Text>
+              <Text style={styles.deviceAddress}>{item.address}</Text>
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={<Text style={styles.emptyText}>No paired devices found.</Text>}
+        />
+        <Button title="Refresh Devices" onPress={listPairedDevices} color="#4CAF50" />
+      </View>
+
+      {connectedDevice && (
+        <View style={styles.connectedSection}>
+          <Text style={styles.connectedText}>Connected to {connectedDevice.name}</Text>
+          <Button title="Print Test Invoice" onPress={printTestMessage} color="#2196F3" />
         </View>
       )}
-      <Button title="Refresh Devices" onPress={listPairedDevices} />
-      <Text style={styles.info}>
-        TCP server listening on port 4000. Send HTTP POST requests to http://192.168.0.198:4000/print.
-      </Text>
-    </View>
+
+      {/* Configuration section moved to the bottom */}
+      <View style={styles.configSection}>
+        <Text style={styles.configText}>
+          Konfiguruesi i printerit: {ipAddress || 'Nuk u gjet'}
+        </Text>
+        <Button
+          title="Kliko ketu per te shtuar konfigurimin e printerit"
+          onPress={handleGoToPage}
+          color="#FF5722"
+        />
+      </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 20, marginBottom: 20 },
-  info: { marginTop: 20, textAlign: 'center' },
+  container: {
+    padding: 20,
+    backgroundColor: '#F5F5F5',
+    alignItems: 'center',
+    minHeight: '100%',
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  ipText: {
+    fontSize: 16,
+    marginBottom: 20,
+    color: '#555',
+  },
+  section: {
+    width: '100%',
+    backgroundColor: '#FFF',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 10,
+    color: '#333',
+  },
+  deviceItem: {
+    padding: 10,
+    borderBottomColor: '#EEE',
+    borderBottomWidth: 1,
+  },
+  deviceText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  deviceAddress: {
+    fontSize: 12,
+    color: '#888',
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#888',
+    marginVertical: 10,
+  },
+  connectedSection: {
+    width: '100%',
+    backgroundColor: '#FFF',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  connectedText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 10,
+    color: '#4CAF50',
+  },
+  configSection: {
+    width: '100%',
+    backgroundColor: '#FFF',
+    padding: 15,
+    borderRadius: 8,
+    marginTop: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  configText: {
+    fontSize: 16,
+    marginBottom: 10,
+    color: '#555',
+    textAlign: 'center',
+  },
 });
 
 export default App;

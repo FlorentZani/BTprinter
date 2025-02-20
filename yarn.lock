@@ -6179,6 +6179,16 @@ react-native-bluetooth-classic@^1.73.0-rc.13:
   version "0.0.6"
   resolved "git+ssh://git@github.com/FlorentZani/react-native-bluetooth-escpos-printer.git#a9afce5c814279363e7a1145f5a85ce3c7396148"
 
+react-native-device-info@^14.0.4:
+  version "14.0.4"
+  resolved "https://registry.npmjs.org/react-native-device-info/-/react-native-device-info-14.0.4.tgz"
+  integrity sha512-NX0wMAknSDBeFnEnSFQ8kkAcQrFHrG4Cl0mVjoD+0++iaKrOupiGpBXqs8xR0SeJyPC5zpdPl4h/SaBGly6UxA==
+
+react-native-network-info@^5.2.1:
+  version "5.2.1"
+  resolved "https://registry.npmjs.org/react-native-network-info/-/react-native-network-info-5.2.1.tgz"
+  integrity sha512-iam74xXtrSqqZurCl1/bSjZ9jXcsJY84g7brx1/4uVGCY26c6m+4CArHNSHOsz5ATg2NQT+81sjNy0KlCPyK4g==
+
 react-native-tcp-socket@^6.2.0:
   version "6.2.0"
   resolved "https://registry.npmjs.org/react-native-tcp-socket/-/react-native-tcp-socket-6.2.0.tgz"
@@ -6187,7 +6197,7 @@ react-native-tcp-socket@^6.2.0:
     buffer "^5.4.3"
     eventemitter3 "^4.0.7"
 
-react-native@*, react-native@>=0.55.4, react-native@>=0.60.0, react-native@>=0.73.1, react-native@0.77.0:
+react-native@*, react-native@>=0.47, react-native@>=0.55.4, react-native@>=0.60.0, react-native@>=0.73.1, react-native@0.77.0:
   version "0.77.0"
   resolved "https://registry.npmjs.org/react-native/-/react-native-0.77.0.tgz"
   integrity sha512-oCgHLGHFIp6F5UbyHSedyUXrZg6/GPe727freGFvlT7BjPJ3K6yvvdlsp7OEXSAHz6Fe7BI2n5cpUyqmP9Zn+Q==

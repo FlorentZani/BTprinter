@@ -30,8 +30,10 @@ import {
       uom?: string;
     }>;
     totalPriceNoVat?: number;
-    vat?: number;
-    vatType?: string;
+    vat?: Array<{
+      vatType?:string,
+      amount?:number
+    }>;
     totalDiscount?: number;
     totalPrice?: number;
     Exrate?: number;
@@ -121,30 +123,38 @@ import {
     }
 
       
-     // **Totals**
-     if (invoice.totalPriceNoVat != null) {
-       const leftText = "SHUMA PA TVSH";
-       const rightText = invoice.totalPriceNoVat + "L";
-       commands += leftRightText(leftText, rightText) + "\n";
-       }
-    if (invoice.totalDiscount != null) {
+      // **Totals**
+      if (invoice.totalPriceNoVat != null) {
+        const leftText = "SHUMA PA TVSH";
+        const rightText = invoice.totalPriceNoVat + "L";
+        commands += leftRightText(leftText, rightText) + "\n";
+      }
+      if (invoice.totalDiscount != null) {
         const leftText = "ZBRITJA TOTALE";
         const rightText = invoice.totalDiscount.toString() + "L";
-       commands += leftRightText(leftText,rightText) + "\n";
-     }
-     if (invoice.vat != null) {
-        const leftText = "TVSH " + invoice.vatType;
-        const rightText = invoice.vat + "L";
-       commands += leftRightText(leftText,rightText) + "\n";
+        commands += leftRightText(leftText, rightText) + "\n";
       }
 
-     if (invoice.totalPrice != null) {
+      // **VAT Section**
+      if (Array.isArray(invoice.vat) && invoice.vat.length > 0) {
+        invoice.vat.forEach((vatItem) => {
+          // Check that both vatType and amount exist before printing.
+          if (vatItem.vatType != null && vatItem.amount != null) {
+            const leftText = "TVSH " + vatItem.vatType;
+            const rightText = vatItem.amount + "L";
+            commands += leftRightText(leftText, rightText) + "\n";
+          }
+        });
+      }
+
+      if (invoice.totalPrice != null) {
         commands += boldText();
         const leftText = "SHUMA Leke";
         const rightText = invoice.totalPrice + "L";
-       commands += leftRightText(leftText,rightText) + "\n";
-       commands += reset();
-     }
+        commands += leftRightText(leftText, rightText) + "\n";
+        commands += reset();
+      }
+
     commands += reset();
     // **Customer Info**
     commands += centerText();
