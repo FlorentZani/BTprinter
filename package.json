@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.1.1",
     "buffer": "^6.0.3",
     "nodejs-mobile-react-native": "^18.20.4",
     "qrcode": "^1.5.4",
@@ -19,7 +20,8 @@
     "react-native-bluetooth-escpos-printer": "github:FlorentZani/react-native-bluetooth-escpos-printer",
     "react-native-device-info": "^14.0.4",
     "react-native-network-info": "^5.2.1",
-    "react-native-tcp-socket": "^6.2.0"
+    "react-native-tcp-socket": "^6.2.0",
+    "react-native-webview": "^13.13.2"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
