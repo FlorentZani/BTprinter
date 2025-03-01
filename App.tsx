@@ -30,7 +30,12 @@ import {
   reset,
   setTextSize,
 } from './escpos-commands';
-import { formatInvoice, Invoice } from './InvoiceFormatter';
+import { formatInvoice, Invoice as BaseInvoice } from './InvoiceFormatter';
+
+// Extend the imported Invoice interface to accept a custom printerWidth.
+interface Invoice extends BaseInvoice {
+  printerWidth?: number;
+}
 
 global.Buffer = Buffer;
 
@@ -54,6 +59,9 @@ const App: React.FC = () => {
 
   // Loading state when connecting to a printer.
   const [connecting, setConnecting] = useState<boolean>(false);
+
+  // Printing state: when a print request is in progress.
+  const [printing, setPrinting] = useState<boolean>(false);
 
   // WebView state and spinner.
   const [showWebView, setShowWebView] = useState<boolean>(false);
@@ -156,7 +164,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Disconnect from the current device.
+  // Disconnect from the current device and return to paired devices.
   const disconnectFromDevice = async () => {
     if (connectedDevice) {
       try {
@@ -165,37 +173,67 @@ const App: React.FC = () => {
         console.error("Error disconnecting", e);
       } finally {
         setConnectedDevice(null);
+        setShowWebView(false);
         await AsyncStorage.removeItem('lastConnectedDevice');
       }
     }
   };
 
-  // Print invoice; if error occurs, disconnect and alert the user.
+  // Helper: Write to device with a 5-second timeout.
+  const writeToDeviceWithTimeout = async (address: string, data: Buffer, timeout = 5000) => {
+    return new Promise((resolve, reject) => {
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        reject(new Error("Print timeout"));
+      }, timeout);
+      
+      RNBluetoothClassic.writeToDevice(address, data)
+        .then((res: any) => {
+          if (!timedOut) {
+            clearTimeout(timer);
+            resolve(res);
+          }
+        })
+        .catch((err: any) => {
+          if (!timedOut) {
+            clearTimeout(timer);
+            reject(err);
+          }
+        });
+    });
+  };
+
+  // Print invoice; if error or timeout occurs, disconnect and alert the user.
+  // Uses invoice.printerWidth if provided.
   const printInvoice = async (invoice: Invoice): Promise<void> => {
     if (!connectedDeviceRef.current) {
       Alert.alert("Not Connected", "No printer is connected.");
       return;
     }
+    setPrinting(true);
     try {
-      const width = parseInt(printerWidthRef.current, 10) || 48;
-      console.log("Using printer width:", width);
-      const commands = formatInvoice(invoice, width);
+      const invoiceWidth = invoice.printerWidth ?? (parseInt(printerWidthRef.current, 10) || 48);
+      console.log("Using printer width:", invoiceWidth);
+      const commands = formatInvoice(invoice, invoiceWidth);
       const encodedCommands = Buffer.from(commands, 'latin1');
       console.log('Printing invoice (first 100 chars):', encodedCommands.slice(0, 100));
-      await RNBluetoothClassic.writeToDevice(
-        connectedDeviceRef.current.address,
-        encodedCommands
-      );
+      // Write with a 5-second timeout.
+      await writeToDeviceWithTimeout(connectedDeviceRef.current.address, encodedCommands, 5000);
       console.log('Printed invoice successfully');
     } catch (error) {
       console.error('Printing invoice failed:', error);
       disconnectFromDevice();
       Alert.alert("Printer Disconnected", "The printer appears to be disconnected. Please reconnect.");
+      throw error;
+    } finally {
+      setPrinting(false);
     }
   };
 
   const printTestMessage = async (): Promise<void> => {
     await printInvoice({
+      // Optionally, a custom printerWidth can be provided here.
       invoiceType: "Fature Shitje",
       header: "Invoice Header",
       invNumber: 15,
@@ -231,16 +269,16 @@ const App: React.FC = () => {
     requestBluetoothPermissions();
     listPairedDevices();
     const tcpServer = TcpSocket.createServer((socket: any) => {
-      console.log('Client connected');
-      socket.on('data', (data: string | Buffer) => {
-        const requestStr = typeof data === 'string' ? data : data.toString('utf8');
+      socket.on('data', async (data: string | Buffer) => {
+        const requestStr = typeof data === 'string' ? data.trim() : data.toString('utf8').trim();
         console.log('Received request:\n', requestStr);
+        // Handle preflight OPTIONS requests—allow both Content-Type and authorization headers.
         if (requestStr.startsWith('OPTIONS')) {
           const optionsResponse =
             'HTTP/1.1 204 No Content\r\n' +
             'Access-Control-Allow-Origin: *\r\n' +
             'Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n' +
-            'Access-Control-Allow-Headers: Content-Type\r\n' +
+            'Access-Control-Allow-Headers: Content-Type, authorization\r\n' +
             'Content-Length: 0\r\n\r\n';
           socket.write(optionsResponse);
           return;
@@ -248,38 +286,54 @@ const App: React.FC = () => {
         if (requestStr.startsWith('POST /print')) {
           const delimiter = '\r\n\r\n';
           const bodyIndex = requestStr.indexOf(delimiter);
+          let statusLine = 'HTTP/1.1 200 OK\r\n';
           if (bodyIndex >= 0) {
             const body = requestStr.slice(bodyIndex + delimiter.length).trim();
             if (body) {
               try {
                 const invoice: Invoice = JSON.parse(body);
                 console.log('Invoice data received:', invoice);
-                printInvoice(invoice);
+                await printInvoice(invoice);
+                statusLine = 'HTTP/1.1 200 OK\r\n';
               } catch (err) {
-                console.error('Error parsing JSON body:', err);
+                console.error('Error during printing:', err);
+                statusLine = 'HTTP/1.1 500 Internal Server Error\r\n';
               }
             } else {
               console.warn('POST request received but no body found.');
+              statusLine = 'HTTP/1.1 400 Bad Request\r\n';
             }
           } else {
             console.warn('Invalid HTTP request format: missing header-body delimiter.');
+            statusLine = 'HTTP/1.1 400 Bad Request\r\n';
           }
           const postResponse =
-            'HTTP/1.1 200 OK\r\n' +
+            statusLine +
             'Access-Control-Allow-Origin: *\r\n' +
             'Access-Control-Allow-Headers: Content-Type\r\n' +
             'Content-Type: text/plain\r\n' +
-            'Content-Length: 2\r\n\r\nOK';
+            'Content-Length: 0\r\n\r\n';
           socket.write(postResponse);
-        } else {
-          const defaultResponse =
+          return;
+        }
+        if (requestStr.startsWith('POST /ReturnToApp')) {
+          setShowWebView(false);
+          const returnResponse =
             'HTTP/1.1 200 OK\r\n' +
             'Access-Control-Allow-Origin: *\r\n' +
-            'Access-Control-Allow-Headers: Content-Type\r\n' +
+            'Access-Control-Allow-Headers: Content-Type, authorization\r\n' +
             'Content-Type: text/plain\r\n' +
-            'Content-Length: 19\r\n\r\nHello from mobile!';
-          socket.write(defaultResponse);
+            'Content-Length: 0\r\n\r\n';
+          socket.write(returnResponse);
+          return;
         }
+        // Block any unknown endpoints.
+        const forbiddenResponse =
+          'HTTP/1.1 403 Forbidden\r\n' +
+          'Access-Control-Allow-Origin: *\r\n' +
+          'Content-Type: text/plain\r\n' +
+          'Content-Length: 0\r\n\r\n';
+        socket.write(forbiddenResponse);
       });
       socket.on('error', (error: any) => {
         console.error('Socket error:', error);
@@ -315,7 +369,7 @@ const App: React.FC = () => {
         <Button
           title="Ruaj"
           onPress={async () => {
-            const fullDomain = subdomainInput.trim() + '.iva.al';
+            const fullDomain = subdomainInput.trim() + '.ivaelektronik.com';
             setInternetSubdomain(fullDomain);
             try {
               await AsyncStorage.setItem('internetSubdomain', fullDomain);
@@ -334,11 +388,11 @@ const App: React.FC = () => {
     <>
       {showWebView ? (
         <View style={{ flex: 1 }}>
-          <Button title="Kthehu tek aplikacioni" onPress={() => setShowWebView(false)} />
           <View style={{ flex: 1 }}>
             <WebView
               source={{ uri: `${internetSubdomain}` }}
               style={{ flex: 1 }}
+              userAgent="WebPOS-Mobile-WebView"
               onLoadStart={() => {
                 if (!hasWebviewLoaded) {
                   setWebviewLoading(true);
@@ -431,8 +485,8 @@ const App: React.FC = () => {
                 />
               </View>
             ) : (
-              <View style ={styles.buttonContainer}>
-                  <Button title="Change Printer Width" onPress={() => setEditingPrinterWidth(true)} />
+              <View style={styles.buttonContainer}>
+                <Button title="Change Printer Width" onPress={() => setEditingPrinterWidth(true)} />
               </View>
             )}
           </View>
@@ -449,6 +503,21 @@ const App: React.FC = () => {
             <View style={styles.activityIndicatorWrapper}>
               <ActivityIndicator size="large" color="#0000ff" />
               <Text>Connecting...</Text>
+            </View>
+          </View>
+        </Modal>
+      )}
+      {printing && (
+        <Modal
+          visible={printing}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => {}}
+        >
+          <View style={styles.modalBackground}>
+            <View style={styles.activityIndicatorWrapper}>
+              <ActivityIndicator size="large" color="#0000ff" />
+              <Text>Printing invoice...</Text>
             </View>
           </View>
         </Modal>
