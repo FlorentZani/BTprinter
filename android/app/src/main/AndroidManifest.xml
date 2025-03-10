@@ -2,24 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.printserviceapp">
 
-    <!-- Required permissions -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Legacy Bluetooth permissions (for backward compatibility) -->
+    <!-- Required permissions for BLE -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-
-    <!-- New Bluetooth permissions (Android 13+ / Android 14) -->
-    <uses-permission 
-        android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <!-- (Optional) Location permission may be required for certain Bluetooth operations on older devices -->
-    <!-- <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" /> -->
+    <!-- Location permission is required for scanning BLE devices on Android 12 and below -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
         android:name=".MainApplication"
@@ -40,21 +30,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- PrinterActivity: if not launched from outside, set exported="false" -->
-        <activity
-            android:name=".PrinterActivity"
-            android:label="Printer Activity"
-            android:exported="false"
-            android:theme="@style/PrinterActivityTheme" />
-
-        <!-- SettingsActivity: if only launched internally, exported can be false -->
-        <activity
-            android:name=".SettingsActivity"
-            android:label="Settings"
-            android:exported="false" />
-
-        <!-- Add additional activities as needed -->
 
     </application>
 

@@ -14,8 +14,8 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
+import BleManager from 'react-native-ble-manager';
 import TcpSocket from 'react-native-tcp-socket';
-import RNBluetoothClassic, { BluetoothDevice as RNBluetoothDevice } from 'react-native-bluetooth-classic';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Buffer } from 'buffer';
@@ -39,10 +39,41 @@ interface Invoice extends BaseInvoice {
 
 global.Buffer = Buffer;
 
+// For BLE, we use id instead of address.
 interface BluetoothDevice {
-  address: string;
+  id: string;
   name: string;
 }
+
+// Helper to check if a characteristic is writable.
+const isWritableCharacteristic = (char: any): boolean => {
+  if (!char.properties) return false;
+
+  // If properties is an object (as in your sample data).
+  if (typeof char.properties === 'object' && !Array.isArray(char.properties)) {
+    const keys = Object.keys(char.properties);
+    return keys.some((key: string) =>
+      key.toLowerCase() === 'write' || key.toLowerCase() === 'writewithoutresponse'
+    );
+  }
+
+  // If properties is an array.
+  if (Array.isArray(char.properties)) {
+    return char.properties.some((prop: string) =>
+      prop.toLowerCase() === 'write' || prop.toLowerCase() === 'writewithoutresponse'
+    );
+  }
+
+  // If properties is a comma-separated string.
+  if (typeof char.properties === 'string') {
+    const props = char.properties.split(',').map((s: string) => s.trim());
+    return props.some((prop: string) =>
+      prop.toLowerCase() === 'write' || prop.toLowerCase() === 'writewithoutresponse'
+    );
+  }
+  
+  return false;
+};
 
 const App: React.FC = () => {
   // Subdomain configuration.
@@ -69,10 +100,15 @@ const App: React.FC = () => {
   const [hasWebviewLoaded, setHasWebviewLoaded] = useState<boolean>(false);
   const webviewTimeoutRef = useRef<any>(null);
 
-  // Other states.
+  // BLE Devices state.
   const [devices, setDevices] = useState<BluetoothDevice[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<BluetoothDevice | null>(null);
+  const [currentCandidate, setCurrentCandidate] = useState<{ service: string; characteristic: string } | null>(null);
+  // Use refs to always have the latest connection info.
   const connectedDeviceRef = useRef<BluetoothDevice | null>(null);
+  const currentCandidateRef = useRef<{ service: string; characteristic: string } | null>(null);
+
+  // TCP server.
   const [server, setServer] = useState<any>(null);
 
   // Load saved configuration on mount.
@@ -90,16 +126,21 @@ const App: React.FC = () => {
     const tryReconnect = async () => {
       const lastConnected = await AsyncStorage.getItem('lastConnectedDevice');
       if (lastConnected && devices.length > 0) {
-        const device = devices.find(d => d.address === lastConnected) || { address: lastConnected, name: 'Unknown Device' };
+        const device = devices.find(d => d.id === lastConnected) || { id: lastConnected, name: 'Unknown Device' };
         connectToDeviceNow(device);
       }
     };
     tryReconnect();
   }, [devices]);
 
+  // Update refs when state changes.
   useEffect(() => {
     connectedDeviceRef.current = connectedDevice;
   }, [connectedDevice]);
+
+  useEffect(() => {
+    currentCandidateRef.current = currentCandidate;
+  }, [currentCandidate]);
 
   // Automatically open the WebView when a printer gets connected.
   useEffect(() => {
@@ -108,6 +149,7 @@ const App: React.FC = () => {
     }
   }, [connectedDevice]);
 
+  // Request Bluetooth and location permissions (for BLE).
   const requestBluetoothPermissions = async (): Promise<void> => {
     if (Platform.OS === 'android') {
       try {
@@ -123,12 +165,38 @@ const App: React.FC = () => {
     }
   };
 
-  const listPairedDevices = async (): Promise<void> => {
+  // Initialize BLE Manager.
+  useEffect(() => {
+    requestBluetoothPermissions();
+    BleManager.start({ showAlert: false })
+      .then(() => console.log('BleManager started'))
+      .catch(err => console.error('BleManager start error:', err));
+    // Start a scan on mount (adjust scan duration as needed)
+    scanDevices();
+  }, []);
+
+  // Scan for BLE devices for 5 seconds.
+  const scanDevices = async (): Promise<void> => {
+    setDevices([]);
+    console.log('Starting BLE scan...');
     try {
-      const paired: RNBluetoothDevice[] = await RNBluetoothClassic.getBondedDevices();
-      setDevices(paired as BluetoothDevice[]);
-    } catch (e) {
-      console.error('Error listing paired devices:', e);
+      await BleManager.scan([], 5, true);
+      // Wait for 5 seconds.
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      BleManager.stopScan();
+      console.log('Scan stopped');
+      const peripherals = await BleManager.getDiscoveredPeripherals();
+      console.log('Discovered peripherals:', peripherals);
+      // Filter to only include devices that have a name.
+      const filtered = peripherals.filter((p: any) => p.name);
+      // Map to our BluetoothDevice interface (using id and name).
+      const bleDevices: BluetoothDevice[] = filtered.map((p: any) => ({ id: p.id, name: p.name }));
+      setDevices(bleDevices);
+      if (bleDevices.length === 0) {
+        Alert.alert('No devices found', 'Ensure your printer is on and advertising.');
+      }
+    } catch (err) {
+      console.error('Error scanning devices:', err);
     }
   };
 
@@ -144,19 +212,43 @@ const App: React.FC = () => {
     );
   };
 
-  // Connect to a device; if connection fails, then disconnect.
+  // Connect to a BLE device and select the first writable characteristic.
   const connectToDeviceNow = async (device: BluetoothDevice): Promise<void> => {
     setConnecting(true);
     try {
-      const connected = await RNBluetoothClassic.connectToDevice(device.address);
-      if (connected) {
-        setConnectedDevice(connected as BluetoothDevice);
-        await AsyncStorage.setItem('lastConnectedDevice', device.address);
-        console.log('Connected to:', device.name);
-      } else {
-        disconnectFromDevice();
+      console.log('Connecting to', device.id);
+      await BleManager.connect(device.id);
+      console.log('Connected to device', device.id);
+      // Wait a bit for services to be discovered.
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const peripheralInfo = await BleManager.retrieveServices(device.id);
+      console.log('Peripheral info:', peripheralInfo);
+
+      if (!peripheralInfo.characteristics || peripheralInfo.characteristics.length === 0) {
+        Alert.alert('No characteristics found', 'No characteristics were discovered. Disconnecting.');
+        await BleManager.disconnect(device.id);
+        return;
       }
-    } catch (e) {
+
+      // Filter for writable characteristics.
+      const writable = peripheralInfo.characteristics.filter((char: any) => isWritableCharacteristic(char));
+      if (writable.length === 0) {
+        Alert.alert('No writable characteristics', 'This device does not support writable characteristics. Disconnecting.');
+        await BleManager.disconnect(device.id);
+        return;
+      }
+
+      setConnectedDevice({ id: device.id, name: device.name });
+      await AsyncStorage.setItem('lastConnectedDevice', device.id);
+      // Select the first writable candidate.
+      const candidate = { service: writable[0].service, characteristic: writable[0].characteristic };
+      setCurrentCandidate(candidate);
+      Alert.alert(
+        'Connected',
+        `Connected to ${device.name}\nUsing candidate:\nService: ${candidate.service}\nCharacteristic: ${candidate.characteristic}`
+      );
+      console.log('Current candidate:', candidate);
+    } catch (e: any) {
       console.error('Connection failed:', e);
       disconnectFromDevice();
     } finally {
@@ -164,31 +256,37 @@ const App: React.FC = () => {
     }
   };
 
-  // Disconnect from the current device and return to paired devices.
+  // Disconnect from the current BLE device.
   const disconnectFromDevice = async () => {
     if (connectedDevice) {
       try {
-        await RNBluetoothClassic.disconnectFromDevice(connectedDevice.address);
+        await BleManager.disconnect(connectedDevice.id);
       } catch (e) {
         console.error("Error disconnecting", e);
       } finally {
         setConnectedDevice(null);
+        setCurrentCandidate(null);
         setShowWebView(false);
         await AsyncStorage.removeItem('lastConnectedDevice');
       }
     }
   };
 
-  // Helper: Write to device with a 5-second timeout.
-  const writeToDeviceWithTimeout = async (address: string, data: Buffer, timeout = 5000) => {
+  // Helper: Write to BLE device with a 5-second timeout.
+  const writeToDeviceWithTimeout = async (deviceId: string, data: number[], timeout = 5000) => {
     return new Promise((resolve, reject) => {
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
         reject(new Error("Print timeout"));
       }, timeout);
-      
-      RNBluetoothClassic.writeToDevice(address, data)
+
+      BleManager.writeWithoutResponse(
+        deviceId,
+        currentCandidateRef.current!.service,
+        currentCandidateRef.current!.characteristic,
+        data
+      )
         .then((res: any) => {
           if (!timedOut) {
             clearTimeout(timer);
@@ -204,10 +302,10 @@ const App: React.FC = () => {
     });
   };
 
-  // Print invoice; if error or timeout occurs, disconnect and alert the user.
-  // Uses invoice.printerWidth if provided.
+  // Print invoice using BLE. Uses invoice.printerWidth if provided.
   const printInvoice = async (invoice: Invoice): Promise<void> => {
-    if (!connectedDeviceRef.current) {
+    // Use the refs to ensure we're using the latest connection info.
+    if (!connectedDeviceRef.current || !currentCandidateRef.current) {
       Alert.alert("Not Connected", "No printer is connected.");
       return;
     }
@@ -217,9 +315,11 @@ const App: React.FC = () => {
       console.log("Using printer width:", invoiceWidth);
       const commands = formatInvoice(invoice, invoiceWidth);
       const encodedCommands = Buffer.from(commands, 'latin1');
-      console.log('Printing invoice (first 100 chars):', encodedCommands.slice(0, 100));
+      console.log('Printing invoice (first 100 bytes):', encodedCommands.slice(0, 100));
+      // Convert Buffer to array of numbers.
+      const dataArray = Array.from(encodedCommands);
       // Write with a 5-second timeout.
-      await writeToDeviceWithTimeout(connectedDeviceRef.current.address, encodedCommands, 5000);
+      await writeToDeviceWithTimeout(connectedDeviceRef.current.id, dataArray, 5000);
       console.log('Printed invoice successfully');
     } catch (error) {
       console.error('Printing invoice failed:', error);
@@ -233,7 +333,6 @@ const App: React.FC = () => {
 
   const printTestMessage = async (): Promise<void> => {
     await printInvoice({
-      // Optionally, a custom printerWidth can be provided here.
       invoiceType: "Fature Shitje",
       header: "Invoice Header",
       invNumber: 15,
@@ -266,13 +365,11 @@ const App: React.FC = () => {
 
   // TCP server setup.
   useEffect(() => {
-    requestBluetoothPermissions();
-    listPairedDevices();
     const tcpServer = TcpSocket.createServer((socket: any) => {
       socket.on('data', async (data: string | Buffer) => {
         const requestStr = typeof data === 'string' ? data.trim() : data.toString('utf8').trim();
         console.log('Received request:\n', requestStr);
-        // Handle preflight OPTIONS requests—allow both Content-Type and authorization headers.
+        // Handle OPTIONS requests.
         if (requestStr.startsWith('OPTIONS')) {
           const optionsResponse =
             'HTTP/1.1 204 No Content\r\n' +
@@ -327,7 +424,7 @@ const App: React.FC = () => {
           socket.write(returnResponse);
           return;
         }
-        // Block any unknown endpoints.
+        // Block unknown endpoints.
         const forbiddenResponse =
           'HTTP/1.1 403 Forbidden\r\n' +
           'Access-Control-Allow-Origin: *\r\n' +
@@ -423,28 +520,28 @@ const App: React.FC = () => {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.container}>
-          <Text style={styles.title}>BLUETOOTH PRINTER</Text>
+          <Text style={styles.title}>BLE PRINTER</Text>
           <Button
-            title={`Hap Faqen Web (${internetSubdomain})`}
-            onPress={() => setShowWebView(true)}
+            title="Scan BLE Devices"
+            onPress={scanDevices}
           />
           <View style={styles.spacing} />
           {(!connectedDevice && !connecting) && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Paired Bluetooth Devices</Text>
+              <Text style={styles.sectionTitle}>Discovered BLE Devices</Text>
               <FlatList
                 data={devices}
-                keyExtractor={(item) => item.address}
+                keyExtractor={(item) => item.id}
                 scrollEnabled={false}
                 renderItem={({ item }) => (
                   <TouchableOpacity onPress={() => handleConnect(item)} style={styles.deviceItem}>
                     <Text style={styles.deviceText}>{item.name}</Text>
-                    <Text style={styles.deviceAddress}>{item.address}</Text>
+                    <Text style={styles.deviceAddress}>{item.id}</Text>
                   </TouchableOpacity>
                 )}
-                ListEmptyComponent={<Text style={styles.emptyText}>No paired devices found.</Text>}
+                ListEmptyComponent={<Text style={styles.emptyText}>No BLE devices found.</Text>}
               />
-              <Button title="Refresh Devices" onPress={listPairedDevices} color="#4CAF50" />
+              <Button title="Rescan Devices" onPress={scanDevices} color="#4CAF50" />
             </View>
           )}
           {connecting && (

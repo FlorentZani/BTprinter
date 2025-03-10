@@ -1442,10 +1442,10 @@
   resolved "https://registry.npmjs.org/@pkgjs/parseargs/-/parseargs-0.11.0.tgz"
   integrity sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==
 
-"@react-native-async-storage/async-storage@^2.1.1":
-  version "2.1.1"
-  resolved "https://registry.npmjs.org/@react-native-async-storage/async-storage/-/async-storage-2.1.1.tgz"
-  integrity sha512-UqlnxddwM3rlCHvteFz+HpIXjqhQM7GkBgVQ9sMvMdl8QVOJQDjG7BODCUvabysMDw+9QfMFlLiOI8U6c0VzzQ==
+"@react-native-async-storage/async-storage@^2.1.2":
+  version "2.1.2"
+  resolved "https://registry.npmjs.org/@react-native-async-storage/async-storage/-/async-storage-2.1.2.tgz"
+  integrity sha512-dvlNq4AlGWC+ehtH12p65+17V0Dx7IecOWl6WanF2ja38O1Dcjjvn7jVzkUHJ5oWkQBlyASurTPlTHgKXyYiow==
   dependencies:
     merge-options "^3.0.4"
 
@@ -6187,12 +6187,15 @@ react-is@^18.3.1:
   resolved "https://registry.npmjs.org/react-is/-/react-is-18.3.1.tgz"
   integrity sha512-/LLMVyas0ljjAtoYiPqYiL8VWXzUUdThrmU5+n20DZv+a+ClRoevUzw5JxU+Ieh5/c87ytoTBV9G1FiKfNJdmg==
 
-react-native-bluetooth-classic@^1.73.0-rc.13:
-  version "1.73.0-rc.13"
-  resolved "https://registry.npmjs.org/react-native-bluetooth-classic/-/react-native-bluetooth-classic-1.73.0-rc.13.tgz"
-  integrity sha512-w3nzC0USrPDLj9BqJ82k9KIrE3ug8Qc7KIqXQi3tnqGo20N+pnPxZCl8jY5PF79Xk7zrBZHdSQ605yY5NWz1RA==
-  dependencies:
-    buffer "^6.0.3"
+react-native-ble-manager@^12.1.4:
+  version "12.1.4"
+  resolved "https://registry.npmjs.org/react-native-ble-manager/-/react-native-ble-manager-12.1.4.tgz"
+  integrity sha512-APaT50CtYOvdvK2uSOErLSaC6oTjdz1S1Dx/zS749KB1VTbwmb1WfPnjCmtssX1HC+8AyJDw7MJTiYWZ2/BhHg==
+
+react-native-ble-plx@^3.5.0:
+  version "3.5.0"
+  resolved "https://registry.npmjs.org/react-native-ble-plx/-/react-native-ble-plx-3.5.0.tgz"
+  integrity sha512-PeSnRswHLwLRVMQkOfDaRICtrGmo94WGKhlSC09XmHlqX2EuYgH+vNJpGcLkd8lyiYpEJyf8wlFAdj9Akliwmw==
 
 "react-native-bluetooth-escpos-printer@github:FlorentZani/react-native-bluetooth-escpos-printer":
   version "0.0.6"
@@ -6224,7 +6227,7 @@ react-native-webview@^13.13.2:
     escape-string-regexp "^4.0.0"
     invariant "2.2.4"
 
-react-native@*, "react-native@^0.0.0-0 || >=0.65 <1.0", react-native@>=0.47, react-native@>=0.55.4, react-native@>=0.60.0, react-native@>=0.73.1, react-native@0.77.0:
+react-native@*, "react-native@^0.0.0-0 || >=0.65 <1.0", react-native@>=0.47, react-native@>=0.55.4, react-native@>=0.60.0, react-native@0.77.0:
   version "0.77.0"
   resolved "https://registry.npmjs.org/react-native/-/react-native-0.77.0.tgz"
   integrity sha512-oCgHLGHFIp6F5UbyHSedyUXrZg6/GPe727freGFvlT7BjPJ3K6yvvdlsp7OEXSAHz6Fe7BI2n5cpUyqmP9Zn+Q==
